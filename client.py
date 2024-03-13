@@ -100,9 +100,33 @@ clientAddrTCP = None
 serverAddrUDP = None
 serverAddrTCP = None
 udpSock = -1
+clientCfgFile = "client.cfg"
 
 
 def readCfg():
+    try:
+        with open(clientCfgFile, "r") as fd:
+            for line in fd:
+                line = line.strip()
+                if line.startswith('N'):
+                    storeName(line)
+                elif line.startswith('S'):
+                    storeSituation(line)
+                elif line.startswith('E'):
+                    storeElements(line)
+                elif line.startswith('M'):
+                    storeMac(line)
+                elif line.startswith('L'):
+                    storeLocal(line)
+                else:   #Revisar això
+                    if line[6] == '-':
+                        storeUDP(line)
+                    else:
+                        storeServer(line)
+
+    except FileNotFoundError:
+        print("Error opening the client cfg file")
+        exit(-1)
 
 def setupUDPSocket():
     global udpSock, clientAddrUDP
