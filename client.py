@@ -336,3 +336,42 @@ def buildSUBS_INFOPacket():
     packet.Data = data.encode('utf-8')
     return packet
 
+# Comprovem si la informació emmagatzemada del servidor i la rebuda en el paquet coincideixen
+def correctDataServer(packet):
+    receivedServerIp = serverAddrUDP[0] #Obtenim la IP del servidor
+    if (packet.mac == serverData.Mac and
+            packet.rand_Num == serverData.rand_Num and
+            serverData.Server == receivedServerIp):
+        return True
+    return False
+
+
+def periodicCommunication():    #Arreglar
+    ALIVEPacket = buildALIVEPacket()
+    setupServAddrUDP()  # Reinicia la dirección del servidor para la comunicación periódica
+
+    try:
+        udpSock.sendto(ALIVEPacket, serverAddrUDP)
+        if debug_mode:
+            debugMsg()
+            print("UDP packet type", getTypeOfPacketUDP(ALIVEPacket), "sent correctly.")
+
+        t = R * V
+        time.sleep(t)
+
+        ready, _, _ = select.select([udpSock], [], [], t)
+        if udpSock in ready:
+            packet = receiveALIVEPacket()
+            # Primer ALIVE recibido correctamente
+            if packet.Type == ALIVE and correctServerData(packet) and clientData.Id == packet.Data:
+                createThreads()
+                return
+    except Exception as e:
+        errorMsg()
+        print("Error sending or receiving ALIVE packet:", e)
+
+    # Paquete no recibido en R*V segundos o paquete incorrecto
+    errorMsg()
+    print("First ALIVE not received or incorrect packet")
+    time.sleep(V)
+    login()
