@@ -346,7 +346,7 @@ def correctDataServer(packet):
     return False
 
 
-def periodicCommunication():    #Arreglar
+def periodicCommunication():    #Arreglar això, no esta acabat
     ALIVEPacket = buildALIVEPacket()
     setupServAddrUDP()  # Reinicia la dirección del servidor para la comunicación periódica
 
