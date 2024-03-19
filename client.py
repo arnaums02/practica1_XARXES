@@ -100,6 +100,8 @@ clientAddrTCP = None
 serverAddrUDP = None
 serverAddrTCP = None
 udpSock = -1
+tcpSock = -1    #socket TCP per acceptar les peticions del servidor
+tcpSock = -1    #socket TCP per enviar dades al servidor
 clientCfgFile = "client.cfg"
 
 
@@ -244,6 +246,18 @@ def receiveSubscriptionPacket():
 
     processPacketType(packet)
 
+#Rebem el paquet HELLO
+def receiveHELLOPacket():
+    try:
+        packet = udpSock.recvfrom(sizeof(UDP_PDU))
+        if debugMode:
+            print("El paquet UDP de tipus", getTypeOfPacketUDP(packet), "s'ha rebut correctament")
+        return packet
+
+    except Exception as e:
+        print("Error al rebre el paquet HELLO mitjançant UDP:", e)
+        exit(-1)
+
 # Classifiquem els paquets segons el seu tipus
 def processPacketType(packet):
     packetType = packet.Type
@@ -314,7 +328,7 @@ def processINFO_ACK(packet):
     serverData.Server_TCP = int(packet.Data)
     periodicCommunication()
 
-def buildSUB_REQPacket():
+def buildSUB_REQPacket():   #revisar
     packet = UDP_PDU()
     packet.Type = SUBS_REQ
     packet.mac = clientData.Mac.encode('utf-8')
@@ -322,7 +336,7 @@ def buildSUB_REQPacket():
     packet.Data = ""    # emplena les dades de l'arxiu .cfg, si és necessari
     return packet
 
-def buildSUBS_INFOPacket():
+def buildSUBS_INFOPacket(): #revisar
     packet = UDP_PDU()
     packet.Type = SUBS_INFO
     packet.mac = clientData.Mac.encode('utf-8')
@@ -336,6 +350,14 @@ def buildSUBS_INFOPacket():
     packet.Data = data.encode('utf-8')
     return packet
 
+def buildHELLOPacket(): #revisar, sobretot data
+    packet = UDP_PDU();
+    packet.Type = HELLO
+    packet.mac = clientData.Mac.encode('utf-8')
+    packet.rand_Num = serverData.rand_Num.encode('utf-8')
+    packet.Data = "".encode('utf-8')
+    return packet
+
 # Comprovem si la informació emmagatzemada del servidor i la rebuda en el paquet coincideixen
 def correctDataServer(packet):
     receivedServerIp = serverAddrUDP[0] #Obtenim la IP del servidor
@@ -345,33 +367,74 @@ def correctDataServer(packet):
         return True
     return False
 
-
-def periodicCommunication():    #Arreglar això, no esta acabat
-    ALIVEPacket = buildALIVEPacket()
-    setupServAddrUDP()  # Reinicia la dirección del servidor para la comunicación periódica
+#Iniciem la communicació periòdica
+def periodicCommunication():
+    HELLOPacket = buildHELLOPacket()
+    setupServAddrUDP()  # Reinicia la direcció del servidor per la comunicació periòdica
 
     try:
-        udpSock.sendto(ALIVEPacket, serverAddrUDP)
-        if debug_mode:
-            debugMsg()
-            print("UDP packet type", getTypeOfPacketUDP(ALIVEPacket), "sent correctly.")
+        udpSock.sendto(HELLOPacket, serverAddrUDP)
+        if debugMode:
+            print("UDP packet type", getTypeOfPacketUDP(HELLOPacket), "sent correctly.")
 
-        t = R * V
-        time.sleep(t)
+        time = r * v
+        time.sleep(time)
 
-        ready, _, _ = select.select([udpSock], [], [], t)
+        ready, _, _ = select.select([udpSock], [], [], time)
         if udpSock in ready:
-            packet = receiveALIVEPacket()
+            packet = receiveHELLOPacket()
             # Primer ALIVE recibido correctamente
-            if packet.Type == ALIVE and correctServerData(packet) and clientData.Id == packet.Data:
+            if packet.Type == HELLO and correctDataServer(packet) and clientData.Id == packet.Data:
                 createThreads()
                 return
     except Exception as e:
-        errorMsg()
         print("Error sending or receiving ALIVE packet:", e)
 
     # Paquete no recibido en R*V segundos o paquete incorrecto
-    errorMsg()
     print("First ALIVE not received or incorrect packet")
-    time.sleep(V)
-    login()
+    time.sleep(v)
+    loginToServer()
+
+#Retornem la string de cada paquet
+def getTypeOfPacketUDP(packet):
+    if packet.Type == SUBS_ACK:
+        return "SUBS_ACK"
+    elif packet.Type == SUBS_INFO:
+        return "SUBS_INFO"
+    elif packet.Type == SUBS_NACK:
+        return "SUBS_NACK"
+    elif packet.Type == SUBS_REQ:
+        return "SUBS_REQ"
+    elif packet.Type == SUBS_REJ:
+        return "SUBS_REJ"
+    elif packet.Type == INFO_ACK:
+        return "INFO_ACK"
+    elif packet.Type == HELLO:
+        return "HELLO"
+    elif packet.Type == HELLO_REJ:
+        return "HELLO_REJ"
+
+    return None
+
+#Creem els threads per enviar els packets HELLO al servidor i gestionem l'entrada d'usuari
+def createThreads():
+    if clientData.Status != SUBSCRIBED:
+        print("Estat del client ERRONI!!")
+        loginToServer()
+        return
+
+    clientData.Status = SEND_HELLO
+    print("L'estat del client és SEND_HELLO")
+
+    if tcpSock < 0:
+        openTCP1Socket()
+
+    terminalThread = threading.Thread(target=handleTerminalInput)
+    sendHelloThread = threading.Thread(target=sendHELLO)
+
+    terminalThread.start()
+    sendHelloThread.start()
+
+    handleTCPConnections()
+
+
